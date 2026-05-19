@@ -1,14 +1,144 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useRef, useState, useCallback } from 'react'
 import { useAppStore } from '@/store/app-store'
-import { getBlockPreviewText } from '@/types'
-import { Card, CardContent } from '@/components/ui/card'
+import { getContentPreview } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, ArrowUpDown, Tag as TagIcon, Image as ImageIcon, Settings, X } from 'lucide-react'
+import { Plus, ArrowUpDown, Tag as TagIcon, Image as ImageIcon, Settings, X, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
+
+// Swipeable note card component
+function SwipeableNoteCard({ note, onEdit, onDelete }: {
+  note: { id: string; title: string; content: string; createdAt: string; tags: { id: string; name: string }[] }
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [offsetX, setOffsetX] = useState(0)
+  const startXRef = useRef(0)
+  const currentXRef = useRef(0)
+  const isDragging = useRef(false)
+  const DELETE_THRESHOLD = -70
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    startXRef.current = e.touches[0].clientX
+    currentXRef.current = offsetX
+    isDragging.current = true
+  }, [offsetX])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging.current) return
+    const diff = e.touches[0].clientX - startXRef.current
+    const newOffset = Math.min(0, Math.max(-120, currentXRef.current + diff))
+    setOffsetX(newOffset)
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false
+    // Snap to open or closed position
+    if (offsetX < DELETE_THRESHOLD) {
+      setOffsetX(-80)
+    } else {
+      setOffsetX(0)
+    }
+  }, [offsetX, DELETE_THRESHOLD])
+
+  // Mouse support for desktop
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    startXRef.current = e.clientX
+    currentXRef.current = offsetX
+    isDragging.current = true
+
+    const handleMouseMove = (moveE: MouseEvent) => {
+      if (!isDragging.current) return
+      const diff = moveE.clientX - startXRef.current
+      const newOffset = Math.min(0, Math.max(-120, currentXRef.current + diff))
+      setOffsetX(newOffset)
+    }
+
+    const handleMouseUp = () => {
+      isDragging.current = false
+      setOffsetX((prev) => {
+        if (prev < DELETE_THRESHOLD) return -80
+        return 0
+      })
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [offsetX, DELETE_THRESHOLD])
+
+  const handleClick = useCallback(() => {
+    if (offsetX === 0) {
+      onEdit()
+    } else {
+      setOffsetX(0)
+    }
+  }, [offsetX, onEdit])
+
+  const preview = getContentPreview(note.content)
+
+  return (
+    <div className="relative overflow-hidden rounded-lg">
+      {/* Delete button underneath */}
+      <div className="absolute right-0 top-0 bottom-0 w-20 flex items-center justify-center bg-destructive z-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-white hover:bg-destructive/80 h-full w-full gap-1"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          删除
+        </Button>
+      </div>
+
+      {/* Card content */}
+      <div
+        ref={cardRef}
+        className="relative z-10 bg-card border rounded-lg transition-transform"
+        style={{ transform: `translateX(${offsetX}px)` }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+      >
+        <div className="p-4">
+          <div className="flex flex-col gap-1.5">
+            <h3 className="font-semibold text-base line-clamp-1">
+              {note.title || '无标题'}
+            </h3>
+            {preview && (
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {preview}
+              </p>
+            )}
+            <div className="flex items-center justify-between mt-1">
+              <div className="flex flex-wrap gap-1">
+                {note.tags.map((tag) => (
+                  <Badge key={tag.id} variant="secondary" className="text-xs">
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+              <span className="text-xs text-muted-foreground shrink-0">
+                {format(new Date(note.createdAt), 'MM/dd HH:mm')}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function NoteListView() {
   const {
@@ -22,6 +152,8 @@ export default function NoteListView() {
     clearTagSelection,
     setSortOrder,
     filteredNotes,
+    updateNote,
+    removeNote,
   } = useAppStore()
 
   const displayNotes = filteredNotes()
@@ -37,7 +169,6 @@ export default function NoteListView() {
       reader.onload = (ev) => {
         const result = ev.target?.result as string
         useAppStore.getState().setBackgroundImage(result)
-        // Save to server
         fetch('/api/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -58,6 +189,18 @@ export default function NoteListView() {
     }).catch(console.error)
   }
 
+  const handleSoftDelete = async (noteId: string) => {
+    try {
+      await fetch(`/api/notes/${noteId}`, { method: 'DELETE' })
+      const note = notes.find((n) => n.id === noteId)
+      if (note) {
+        updateNote({ ...note, deletedAt: new Date().toISOString() })
+      }
+    } catch (error) {
+      console.error('Failed to delete note:', error)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Background image layer */}
@@ -71,7 +214,7 @@ export default function NoteListView() {
       {/* Content layer */}
       <div className="relative z-10 flex flex-col h-full">
         {/* Header */}
-        <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-sm border-b px-4 py-3">
+        <div className="shrink-0 bg-background/80 backdrop-blur-sm border-b px-4 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">日记便签</h1>
             <div className="flex items-center gap-1">
@@ -95,6 +238,10 @@ export default function NoteListView() {
                   <DropdownMenuItem onClick={() => setView('tags')}>
                     <TagIcon className="h-4 w-4 mr-2" />
                     标签管理
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setView('trash')}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    回收站
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -171,56 +318,12 @@ export default function NoteListView() {
             </div>
           ) : (
             displayNotes.map((note) => (
-              <Card
+              <SwipeableNoteCard
                 key={note.id}
-                className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]"
-                onClick={() => setView('detail', { noteId: note.id })}
-              >
-                <CardContent className="p-4">
-                  <div className="flex flex-col gap-1.5">
-                    <h3 className="font-semibold text-base line-clamp-1">
-                      {note.title || '无标题'}
-                    </h3>
-                    {getBlockPreviewText(note.contentBlocks) && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {getBlockPreviewText(note.contentBlocks)}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between mt-1">
-                      <div className="flex flex-wrap gap-1">
-                        {note.tags.map((tag) => (
-                          <Badge key={tag.id} variant="secondary" className="text-xs">
-                            {tag.name}
-                          </Badge>
-                        ))}
-                      </div>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {format(new Date(note.createdAt), 'MM/dd HH:mm')}
-                      </span>
-                    </div>
-                    {/* Show image/handwriting indicators */}
-                    {note.contentBlocks.some((b) => b.type === 'image' || b.type === 'handwriting') && (
-                      <div className="flex gap-1.5 mt-1">
-                        {note.contentBlocks
-                          .filter((b) => b.type === 'image' || b.type === 'handwriting')
-                          .slice(0, 3)
-                          .map((block) => (
-                            <div
-                              key={block.id}
-                              className="w-12 h-12 rounded overflow-hidden bg-muted"
-                            >
-                              <img
-                                src={block.data}
-                                alt={block.type === 'image' ? '图片' : '手写'}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                note={note}
+                onEdit={() => setView('edit', { noteId: note.id })}
+                onDelete={() => handleSoftDelete(note.id)}
+              />
             ))
           )}
         </div>

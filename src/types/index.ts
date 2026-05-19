@@ -1,24 +1,3 @@
-export interface TextBlock {
-  id: string
-  type: 'text'
-  data: string
-  color?: string
-}
-
-export interface ImageBlock {
-  id: string
-  type: 'image'
-  data: string // base64
-}
-
-export interface HandwritingBlock {
-  id: string
-  type: 'handwriting'
-  data: string // base64
-}
-
-export type ContentBlock = TextBlock | ImageBlock | HandwritingBlock
-
 export interface Tag {
   id: string
   name: string
@@ -28,52 +7,29 @@ export interface Tag {
 export interface Note {
   id: string
   title: string
-  contentBlocks: ContentBlock[]
+  content: string // Single markdown string with inline images/handwriting
   foldStates: Record<string, boolean>
+  deletedAt: string | null
   createdAt: string
   updatedAt: string
   tags: Tag[]
 }
 
-export type ViewType = 'list' | 'detail' | 'edit' | 'tags'
+export type ViewType = 'list' | 'edit' | 'tags' | 'trash'
 
 export type SortOrder = 'time-desc' | 'time-asc' | 'tag'
 
-export interface AppState {
-  view: ViewType
-  viewParams: { noteId?: string }
-  selectedTagIds: string[]
-  sortOrder: SortOrder
-  backgroundImage: string | null
-}
-
-export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9)
-}
-
-export function createTextBlock(data: string = '', color?: string): TextBlock {
-  return { id: generateId(), type: 'text', data, color }
-}
-
-export function createImageBlock(data: string): ImageBlock {
-  return { id: generateId(), type: 'image', data }
-}
-
-export function createHandwritingBlock(data: string): HandwritingBlock {
-  return { id: generateId(), type: 'handwriting', data }
-}
-
-export function getBlockPreviewText(blocks: ContentBlock[]): string {
-  const textBlocks = blocks.filter((b) => b.type === 'text') as TextBlock[]
-  if (textBlocks.length === 0) return ''
-  const firstText = textBlocks[0].data
+export function getContentPreview(content: string): string {
+  if (!content) return ''
   // Strip markdown syntax for preview
-  const plain = firstText
+  const plain = content
     .replace(/#{1,6}\s/g, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/`(.*?)`/g, '$1')
     .replace(/\[(.*?)\]\(.*?\)/g, '$1')
     .replace(/!\[.*?\]\(.*?\)/g, '[图片]')
-  return plain.substring(0, 100)
+    .replace(/<span[^>]*>(.*?)<\/span>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+  return plain.substring(0, 120).trim()
 }

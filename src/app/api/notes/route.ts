@@ -1,10 +1,35 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-// GET /api/notes - List all notes with tags
-export async function GET() {
+function formatNote(note: {
+  id: string
+  title: string
+  content: string
+  foldStates: string
+  deletedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  tags: { tag: { id: string; name: string } }[]
+}) {
+  return {
+    id: note.id,
+    title: note.title,
+    content: note.content,
+    foldStates: JSON.parse(note.foldStates),
+    deletedAt: note.deletedAt,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+    tags: note.tags.map((nt) => nt.tag),
+  }
+}
+
+// GET /api/notes - List all notes (optionally include deleted)
+export async function GET(request: NextRequest) {
   try {
+    const includeDeleted = request.nextUrl.searchParams.get('deleted') === 'true'
+
     const notes = await db.note.findMany({
+      where: includeDeleted ? {} : { deletedAt: null },
       include: {
         tags: {
           include: {
@@ -17,17 +42,7 @@ export async function GET() {
       },
     })
 
-    const formatted = notes.map((note) => ({
-      id: note.id,
-      title: note.title,
-      contentBlocks: JSON.parse(note.contentBlocks),
-      foldStates: JSON.parse(note.foldStates),
-      createdAt: note.createdAt,
-      updatedAt: note.updatedAt,
-      tags: note.tags.map((nt) => nt.tag),
-    }))
-
-    return NextResponse.json(formatted)
+    return NextResponse.json(notes.map(formatNote))
   } catch (error) {
     console.error('Failed to fetch notes:', error)
     return NextResponse.json({ error: 'Failed to fetch notes' }, { status: 500 })
@@ -38,12 +53,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, contentBlocks, tagIds } = body
+    const { title, content, tagIds } = body
 
     const note = await db.note.create({
       data: {
         title: title || '无标题',
-        contentBlocks: JSON.stringify(contentBlocks || []),
+        content: content || '',
         foldStates: JSON.stringify({}),
       },
     })
@@ -70,15 +85,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({
-      id: created!.id,
-      title: created!.title,
-      contentBlocks: JSON.parse(created!.contentBlocks),
-      foldStates: JSON.parse(created!.foldStates),
-      createdAt: created!.createdAt,
-      updatedAt: created!.updatedAt,
-      tags: created!.tags.map((nt) => nt.tag),
-    })
+    return NextResponse.json(formatNote(created!))
   } catch (error) {
     console.error('Failed to create note:', error)
     return NextResponse.json({ error: 'Failed to create note' }, { status: 500 })

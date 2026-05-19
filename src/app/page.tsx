@@ -3,21 +3,21 @@
 import React, { useEffect, useState } from 'react'
 import { useAppStore } from '@/store/app-store'
 import NoteListView from '@/components/note/note-list-view'
-import NoteDetailView from '@/components/note/note-detail-view'
 import NoteEditView from '@/components/note/note-edit-view'
 import TagManageView from '@/components/note/tag-manage-view'
+import RecycleBinView from '@/components/note/recycle-bin-view'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Home() {
   const { view, setNotes, setTags, setBackgroundImage } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
 
-  // Load initial data
+  // Load initial data - include deleted notes for trash view
   useEffect(() => {
     const loadData = async () => {
       try {
         const [notesRes, tagsRes, bgRes] = await Promise.all([
-          fetch('/api/notes'),
+          fetch('/api/notes?deleted=true'),
           fetch('/api/tags'),
           fetch('/api/settings?key=backgroundImage'),
         ])
@@ -78,9 +78,9 @@ export default function Home() {
             className="flex-1 flex flex-col overflow-hidden"
           >
             {view === 'list' && <NoteListView />}
-            {view === 'detail' && <NoteDetailView />}
             {view === 'edit' && <NoteEditView />}
             {view === 'tags' && <TagManageView />}
+            {view === 'trash' && <RecycleBinView />}
           </motion.div>
         </AnimatePresence>
       </main>

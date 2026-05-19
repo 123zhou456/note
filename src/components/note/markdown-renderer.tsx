@@ -9,7 +9,6 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 
 interface MarkdownRendererProps {
   content: string
-  color?: string
   foldStates: Record<string, boolean>
   onToggleFold: (headingId: string) => void
 }
@@ -22,6 +21,7 @@ interface Section {
 }
 
 // Split markdown into sections by H1/H2 headings
+// Handles multi-line elements (like base64 images) correctly
 function splitIntoSections(markdown: string): Section[] {
   const lines = markdown.split('\n')
   const sections: Section[] = []
@@ -33,13 +33,10 @@ function splitIntoSections(markdown: string): Section[] {
   }
 
   for (const line of lines) {
-    // Check for H1: # Title
     const h1Match = line.match(/^# (.+)$/)
-    // Check for H2: ## Title
     const h2Match = line.match(/^## (.+)$/)
 
     if (h1Match) {
-      // Push the current section if it has content or heading
       if (currentSection.heading !== null || currentSection.content.trim() !== '') {
         sections.push({ ...currentSection })
       }
@@ -47,7 +44,6 @@ function splitIntoSections(markdown: string): Section[] {
       const headingId = `h1-${headingText.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '-').toLowerCase()}-${sections.length}`
       currentSection = { heading: headingText, headingId, content: '', level: 1 }
     } else if (h2Match) {
-      // Push the current section if it has content or heading
       if (currentSection.heading !== null || currentSection.content.trim() !== '') {
         sections.push({ ...currentSection })
       }
@@ -55,7 +51,6 @@ function splitIntoSections(markdown: string): Section[] {
       const headingId = `h2-${headingText.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '-').toLowerCase()}-${sections.length}`
       currentSection = { heading: headingText, headingId, content: '', level: 2 }
     } else {
-      // Add line to current section's content
       if (currentSection.content.length > 0) {
         currentSection.content += '\n'
       }
@@ -63,7 +58,6 @@ function splitIntoSections(markdown: string): Section[] {
     }
   }
 
-  // Push the last section
   if (currentSection.heading !== null || currentSection.content.trim() !== '') {
     sections.push(currentSection)
   }
@@ -71,37 +65,47 @@ function splitIntoSections(markdown: string): Section[] {
   return sections
 }
 
-export default function MarkdownRenderer({ content, color, foldStates, onToggleFold }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, foldStates, onToggleFold }: MarkdownRendererProps) {
   const renderMarkdown = useCallback(
     (md: string) => (
-      <div style={color ? { color } : undefined} className="markdown-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+      <div className="markdown-body">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            // Render images with proper styling (handles base64 data URIs)
+            img: ({ src, alt, ...props }) => (
+              <img
+                src={src}
+                alt={alt || ''}
+                className="max-w-full rounded-lg my-2"
+                loading="lazy"
+                {...props}
+              />
+            ),
+          }}
+        >
           {md}
         </ReactMarkdown>
       </div>
     ),
-    [color]
+    []
   )
 
-  // If no content, return empty
   if (!content || !content.trim()) {
     return null
   }
 
   const sections = splitIntoSections(content)
-
-  // Check if there are any H1/H2 headings
   const hasHeadings = sections.some((s) => s.level === 1 || s.level === 2)
 
   if (!hasHeadings) {
-    // No headings - render as plain markdown
     return <>{renderMarkdown(content)}</>
   }
 
   return (
     <div className="space-y-1">
       {sections.map((section, index) => {
-        // If this section has a heading (H1 or H2), render as collapsible
         if (section.level === 1 || section.level === 2) {
           const isCollapsed = section.headingId ? foldStates[section.headingId] === true : false
           const headingClass = section.level === 1
@@ -122,10 +126,7 @@ export default function MarkdownRenderer({ content, color, foldStates, onToggleF
                   ) : (
                     <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                   )}
-                  <span
-                    className={headingClass}
-                    style={color ? { color } : undefined}
-                  >
+                  <span className={headingClass}>
                     {section.heading}
                   </span>
                 </CollapsibleTrigger>
@@ -139,7 +140,7 @@ export default function MarkdownRenderer({ content, color, foldStates, onToggleF
           )
         }
 
-        // Non-heading section (content before any heading)
+        // Non-heading section
         return (
           <div key={`section-${index}`} className="my-2">
             {renderMarkdown(section.content)}

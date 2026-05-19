@@ -31,6 +31,10 @@ interface AppStore {
   backgroundImage: string | null
   setBackgroundImage: (url: string | null) => void
 
+  // Computed: active (non-deleted) notes
+  activeNotes: () => Note[]
+  // Computed: deleted notes (trash)
+  trashNotes: () => Note[]
   // Computed: filtered and sorted notes
   filteredNotes: () => Note[]
 }
@@ -86,10 +90,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   backgroundImage: null,
   setBackgroundImage: (url) => set({ backgroundImage: url }),
 
+  activeNotes: () => {
+    const { notes } = get()
+    return notes.filter((n) => !n.deletedAt)
+  },
+
+  trashNotes: () => {
+    const { notes } = get()
+    return notes.filter((n) => !!n.deletedAt)
+  },
+
   filteredNotes: () => {
     const { notes, selectedTagIds, sortOrder } = get()
 
-    let filtered = notes
+    // Only show non-deleted notes
+    let filtered = notes.filter((n) => !n.deletedAt)
 
     // Multi-tag AND filter
     if (selectedTagIds.length > 0) {

@@ -8,13 +8,14 @@ datasource db {
 }
 
 model Note {
-  id           String     @id @default(cuid())
-  title        String     @default("无标题")
-  contentBlocks String    @default("[]")
-  foldStates   String     @default("{}")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  tags         NoteTag[]
+  id         String     @id @default(cuid())
+  title      String     @default("无标题")
+  content    String     @default("")
+  foldStates String     @default("{}")
+  deletedAt  DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  tags       NoteTag[]
 }
 
 model Tag {
