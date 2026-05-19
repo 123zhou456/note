@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Note {
+  id           String     @id @default(cuid())
+  title        String     @default("无标题")
+  contentBlocks String    @default("[]")
+  foldStates   String     @default("{}")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  tags         NoteTag[]
+}
+
+model Tag {
+  id    String   @id @default(cuid())
+  name  String   @unique
+  notes NoteTag[]
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+  note   Note  @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @default("")
+}
