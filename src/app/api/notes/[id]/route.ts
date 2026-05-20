@@ -5,6 +5,7 @@ function formatNote(note: {
   id: string
   title: string
   content: string
+  images: string
   foldStates: string
   deletedAt: Date | null
   createdAt: Date
@@ -15,6 +16,7 @@ function formatNote(note: {
     id: note.id,
     title: note.title,
     content: note.content,
+    images: JSON.parse(note.images || '{}'),
     foldStates: JSON.parse(note.foldStates),
     deletedAt: note.deletedAt,
     createdAt: note.createdAt,
@@ -60,11 +62,12 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { title, content, foldStates, tagIds, deletedAt } = body
+    const { title, content, images, foldStates, tagIds, deletedAt } = body
 
     const updateData: Record<string, unknown> = {}
     if (title !== undefined) updateData.title = title
     if (content !== undefined) updateData.content = content
+    if (images !== undefined) updateData.images = JSON.stringify(images)
     if (foldStates !== undefined) updateData.foldStates = JSON.stringify(foldStates)
     // Support soft delete / restore
     if (deletedAt !== undefined) updateData.deletedAt = deletedAt

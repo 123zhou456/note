@@ -16,6 +16,10 @@ const COLOR_OPTIONS = [
   '#1abc9c', '#3498db', '#9b59b6', '#e91e63', '#795548',
 ]
 
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 10)
+}
+
 export default function NoteEditView() {
   const { viewParams, setView, addNote, updateNote, tags, addTag } = useAppStore()
   const { toast } = useToast()
@@ -25,6 +29,7 @@ export default function NoteEditView() {
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [images, setImages] = useState<Record<string, string>>({})
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [foldStates, setFoldStates] = useState<Record<string, boolean>>({})
   const [showPreview, setShowPreview] = useState(false)
@@ -41,11 +46,13 @@ export default function NoteEditView() {
   // Store latest values in refs for unmount save
   const titleRef = useRef(title)
   const contentRef = useRef(content)
+  const imagesRef = useRef(images)
   const foldStatesRef = useRef(foldStates)
   const selectedTagIdsRef = useRef(selectedTagIds)
 
   titleRef.current = title
   contentRef.current = content
+  imagesRef.current = images
   foldStatesRef.current = foldStates
   selectedTagIdsRef.current = selectedTagIds
 
@@ -61,6 +68,7 @@ export default function NoteEditView() {
       if (existing) {
         setTitle(existing.title)
         setContent(existing.content || '')
+        setImages(existing.images || {})
         setSelectedTagIds(existing.tags.map((t) => t.id))
         setFoldStates(existing.foldStates || {})
       }
@@ -73,6 +81,7 @@ export default function NoteEditView() {
     const noteData = {
       title: titleRef.current || '无标题',
       content: contentRef.current,
+      images: imagesRef.current,
       foldStates: foldStatesRef.current,
       tagIds: selectedTagIdsRef.current,
     }
@@ -138,6 +147,7 @@ export default function NoteEditView() {
         const noteData = {
           title: titleRef.current || '无标题',
           content: contentRef.current,
+          images: imagesRef.current,
           foldStates: foldStatesRef.current,
           tagIds: selectedTagIdsRef.current,
         }
@@ -212,7 +222,7 @@ export default function NoteEditView() {
     wrapSelection(`<span style="color:${color}">`, '</span>')
   }, [wrapSelection])
 
-  // Image insertion - inline in markdown
+  // Image insertion - use short reference
   const handleInsertImage = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -224,17 +234,21 @@ export default function NoteEditView() {
       reader.onload = (ev) => {
         const result = ev.target?.result as string
         if (!result) return
-        insertAtCursor(`\n![图片](${result})\n`)
+        const imgId = `img-${generateId()}`
+        setImages((prev) => ({ ...prev, [imgId]: result }))
+        insertAtCursor(`\n![图片](img:${imgId})\n`)
       }
       reader.readAsDataURL(file)
     }
     input.click()
   }, [insertAtCursor])
 
-  // Handwriting insertion - inline in markdown
+  // Handwriting insertion - use short reference
   const handleHandwritingComplete = useCallback((base64Data: string) => {
     if (!base64Data) return
-    insertAtCursor(`\n![手写](${base64Data})\n`)
+    const hwId = `hw-${generateId()}`
+    setImages((prev) => ({ ...prev, [hwId]: base64Data }))
+    insertAtCursor(`\n![手写](hw:${hwId})\n`)
     setShowHandwriting(false)
   }, [insertAtCursor])
 
@@ -444,6 +458,7 @@ export default function NoteEditView() {
           <div className="py-3">
             <MarkdownRenderer
               content={content}
+              images={images}
               foldStates={foldStates}
               onToggleFold={handleToggleFold}
             />
@@ -456,7 +471,7 @@ export default function NoteEditView() {
               setContent(e.target.value)
               triggerAutoSave()
             }}
-            placeholder="输入Markdown内容..."
+            placeholder="输入Markdown内容...&#10;&#10;提示：插入图片/手写后会显示为简短引用，预览时可看到实际内容"
             className="w-full h-full min-h-[300px] resize-none border-0 bg-transparent focus:outline-none text-sm font-mono leading-relaxed py-3"
           />
         )}

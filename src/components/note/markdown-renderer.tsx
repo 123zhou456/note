@@ -9,6 +9,7 @@ import { ChevronRight, ChevronDown } from 'lucide-react'
 
 interface MarkdownRendererProps {
   content: string
+  images: Record<string, string>
   foldStates: Record<string, boolean>
   onToggleFold: (headingId: string) => void
 }
@@ -20,8 +21,19 @@ interface Section {
   level: number
 }
 
+// Resolve short image references (img:uuid, hw:uuid) to actual data URLs
+function resolveImageRefs(markdown: string, images: Record<string, string>): string {
+  return markdown.replace(/!\[(.*?)\]\((img:[a-z0-9-]+|hw:[a-z0-9-]+)\)/g, (match, alt, ref) => {
+    const dataUrl = images[ref]
+    if (dataUrl) {
+      return `![${alt}](${dataUrl})`
+    }
+    // If reference not found, show alt text as indicator
+    return `*[${alt || '图片'}]*`
+  })
+}
+
 // Split markdown into sections by H1/H2 headings
-// Handles multi-line elements (like base64 images) correctly
 function splitIntoSections(markdown: string): Section[] {
   const lines = markdown.split('\n')
   const sections: Section[] = []
@@ -65,34 +77,39 @@ function splitIntoSections(markdown: string): Section[] {
   return sections
 }
 
-export default function MarkdownRenderer({ content, foldStates, onToggleFold }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, images, foldStates, onToggleFold }: MarkdownRendererProps) {
   const renderMarkdown = useCallback(
-    (md: string) => (
-      <div className="markdown-body">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
-          components={{
-            // Render images with proper styling (handles base64 data URIs)
-            img: ({ src, alt, ...props }) => {
-              if (!src) return null
-              return (
-                <img
-                  src={src}
-                  alt={alt || ''}
-                  className="max-w-full rounded-lg my-2"
-                  loading="lazy"
-                  {...props}
-                />
-              )
-            },
-          }}
-        >
-          {md}
-        </ReactMarkdown>
-      </div>
-    ),
-    []
+    (md: string) => {
+      // Resolve image references before rendering
+      const resolved = resolveImageRefs(md, images)
+
+      return (
+        <div className="markdown-body">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              // Render images with proper styling (handles base64 data URIs)
+              img: ({ src, alt, ...props }) => {
+                if (!src) return null
+                return (
+                  <img
+                    src={src}
+                    alt={alt || ''}
+                    className="max-w-full rounded-lg my-2"
+                    loading="lazy"
+                    {...props}
+                  />
+                )
+              },
+            }}
+          >
+            {resolved}
+          </ReactMarkdown>
+        </div>
+      )
+    },
+    [images]
   )
 
   if (!content || !content.trim()) {

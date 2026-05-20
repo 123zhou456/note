@@ -5,6 +5,7 @@ function formatNote(note: {
   id: string
   title: string
   content: string
+  images: string
   foldStates: string
   deletedAt: Date | null
   createdAt: Date
@@ -15,6 +16,7 @@ function formatNote(note: {
     id: note.id,
     title: note.title,
     content: note.content,
+    images: JSON.parse(note.images || '{}'),
     foldStates: JSON.parse(note.foldStates),
     deletedAt: note.deletedAt,
     createdAt: note.createdAt,
@@ -53,12 +55,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, content, tagIds } = body
+    const { title, content, images, tagIds } = body
 
     const note = await db.note.create({
       data: {
         title: title || '无标题',
         content: content || '',
+        images: JSON.stringify(images || {}),
         foldStates: JSON.stringify({}),
       },
     })

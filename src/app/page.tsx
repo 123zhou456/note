@@ -66,7 +66,7 @@ export default function Home() {
   }
 
   return (
-    <div className="h-full flex flex-col max-w-lg mx-auto bg-background shadow-xl relative">
+    <div className="h-full flex flex-col max-w-lg mx-auto bg-background/80 dark:bg-background/60 shadow-xl relative">
       <main className="flex-1 flex flex-col overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
@@ -85,7 +85,7 @@ export default function Home() {
         </AnimatePresence>
       </main>
       {showFooter && (
-        <footer className="py-2 text-center text-xs text-muted-foreground border-t bg-background/80 shrink-0">
+        <footer className="py-2 text-center text-xs text-muted-foreground border-t border-border/50 bg-background/60 dark:bg-background/50 backdrop-blur-md shrink-0">
           日记便签
         </footer>
       )}

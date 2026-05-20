@@ -6,10 +6,11 @@ import { getContentPreview } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, ArrowUpDown, Tag as TagIcon, Image as ImageIcon, Settings, X, Trash2 } from 'lucide-react'
+import { Plus, ArrowUpDown, Tag as TagIcon, Image as ImageIcon, Settings, X, Trash2, Moon, Sun } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { format } from 'date-fns'
 
-// Swipeable note card component
+// Swipeable note card component with glass effect
 function SwipeableNoteCard({ note, onEdit, onDelete }: {
   note: { id: string; title: string; content: string; createdAt: string; tags: { id: string; name: string }[] }
   onEdit: () => void
@@ -100,10 +101,10 @@ function SwipeableNoteCard({ note, onEdit, onDelete }: {
         </Button>
       </div>
 
-      {/* Card content */}
+      {/* Card content - glass effect */}
       <div
         ref={cardRef}
-        className="relative z-10 bg-card border rounded-lg transition-transform"
+        className="relative z-10 bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 rounded-lg transition-transform"
         style={{ transform: `translateX(${offsetX}px)` }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -124,7 +125,7 @@ function SwipeableNoteCard({ note, onEdit, onDelete }: {
             <div className="flex items-center justify-between mt-1">
               <div className="flex flex-wrap gap-1">
                 {note.tags.map((tag) => (
-                  <Badge key={tag.id} variant="secondary" className="text-xs">
+                  <Badge key={tag.id} variant="secondary" className="text-xs bg-secondary/50">
                     {tag.name}
                   </Badge>
                 ))}
@@ -153,9 +154,9 @@ export default function NoteListView() {
     setSortOrder,
     filteredNotes,
     updateNote,
-    removeNote,
   } = useAppStore()
 
+  const { theme, setTheme } = useTheme()
   const displayNotes = filteredNotes()
 
   const handleBackgroundImage = () => {
@@ -201,23 +202,31 @@ export default function NoteListView() {
     }
   }
 
+  const toggleDarkMode = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark')
+  }
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Background image layer */}
       {backgroundImage && (
         <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{ backgroundImage: `url(${backgroundImage})` }}
         />
       )}
 
       {/* Content layer */}
       <div className="relative z-10 flex flex-col h-full">
-        {/* Header */}
-        <div className="shrink-0 bg-background/80 backdrop-blur-sm border-b px-4 py-3">
+        {/* Header - semi-transparent */}
+        <div className="shrink-0 bg-background/60 dark:bg-background/50 backdrop-blur-md border-b border-border/50 px-4 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">日记便签</h1>
             <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleDarkMode} title="切换深色模式">
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-9 w-9">
@@ -287,7 +296,7 @@ export default function NoteListView() {
                   <Badge
                     key={tag.id}
                     variant={isSelected ? 'default' : 'outline'}
-                    className="cursor-pointer text-xs select-none transition-colors"
+                    className={`cursor-pointer text-xs select-none transition-colors ${isSelected ? '' : 'bg-background/40'}`}
                     onClick={() => toggleTagSelection(tag.id)}
                   >
                     {tag.name}

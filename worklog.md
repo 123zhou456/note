@@ -1,27 +1,27 @@
 ---
-Task ID: 2
+Task ID: 1
 Agent: Main Agent
-Task: Refactor diary notes app with swipe-to-delete, recycle bin, inline content, toolbar redesign
+Task: Fix base64 image display in editor, semi-transparent cards, and dark mode support
 
 Work Log:
-- Redesigned data model: replaced contentBlocks (JSON array) with single content (markdown string) field
-- Added deletedAt field for soft delete / recycle bin functionality
-- Updated Prisma schema and pushed to DB (with data loss accepted for test data)
-- Regenerated Prisma client for new schema
-- Updated all API routes: notes CRUD now uses content field, DELETE supports soft delete (default) and permanent delete (?permanent=true), GET supports ?deleted=true param
-- Simplified types: removed ContentBlock/TextBlock/ImageBlock/HandwritingBlock, replaced with single content string
-- Added getContentPreview() helper for extracting plain text from markdown
-- Updated ViewType: removed 'detail', added 'trash'
-- Updated store: added activeNotes(), trashNotes(), filteredNotes() now filters out deleted notes
-- Rebuilt NoteListView: added SwipeableNoteCard with touch/mouse swipe-to-delete, click goes to edit (not detail), added 回收站 menu entry
-- Rebuilt NoteEditView: single textarea, toolbar (Bold/Color/Image/Handwriting) positioned between tags and text area, inline image/handwriting insertion as markdown, bold wraps selection with **, color wraps with <span style="color:...">, image inserts ![图片](data:...), handwriting inserts ![手写](data:...)
-- Built RecycleBinView: shows soft-deleted notes, restore button, permanent delete with confirmation, clear all button
-- Updated MarkdownRenderer: removed color prop (now uses inline HTML), added custom img component for base64 images
-- Updated page.tsx: loads all notes including deleted ones, routes include trash view instead of detail
+- Updated Prisma schema to add `images` field (JSON string) to Note model for storing base64 data separately from markdown content
+- Pushed schema to database with `bun run db:push`
+- Updated Note type in types/index.ts to include `images: Record<string, string>`
+- Updated getContentPreview to handle img:uuid and hw:uuid references
+- Updated both API route files (notes/route.ts, notes/[id]/route.ts) to handle the images field in formatNote, POST, and PUT handlers
+- Rewrote note-edit-view.tsx to use short image references (img:uuid for images, hw:uuid for handwriting) instead of inline base64 in markdown content
+- Rewrote markdown-renderer.tsx to resolve img:uuid/hw:uuid references to actual base64 data URLs before rendering
+- Updated note-list-view.tsx with semi-transparent glass-effect cards (bg-card/60 backdrop-blur-md) and dark mode toggle button
+- Added ThemeProvider component using next-themes
+- Updated layout.tsx to wrap app with ThemeProvider
+- Updated page.tsx with semi-transparent main container and footer
+- Fixed null safety for images field in formatNote (handles existing notes without images data)
 - All lint checks pass
-- Browser testing confirmed: click-to-edit, toolbar position, preview mode, swipe-to-delete, recycle bin all working
 
 Stage Summary:
-- Key UX changes: click note → edit directly (no separate detail view), toolbar between tags and text, inline images/handwriting in markdown, swipe-left-to-delete, recycle bin with restore/permanent delete
-- Content model simplified from block array to single markdown string with inline elements
-- Soft delete architecture: notes marked with deletedAt, filtered from main list, shown in recycle bin
+- Images/handwriting now stored separately with short references in markdown (e.g., ![图片](img:abc123))
+- Editor textarea shows clean short references instead of huge base64 strings
+- Markdown renderer resolves references to actual data URLs for display
+- Note cards are semi-transparent with glass effect to show background image
+- Dark mode fully supported with toggle button in header
+- Existing notes with inline base64 images continue to work (backward compatible)
