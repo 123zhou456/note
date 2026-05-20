@@ -74,15 +74,18 @@ export default function MarkdownRenderer({ content, foldStates, onToggleFold }: 
           rehypePlugins={[rehypeRaw]}
           components={{
             // Render images with proper styling (handles base64 data URIs)
-            img: ({ src, alt, ...props }) => (
-              <img
-                src={src}
-                alt={alt || ''}
-                className="max-w-full rounded-lg my-2"
-                loading="lazy"
-                {...props}
-              />
-            ),
+            img: ({ src, alt, ...props }) => {
+              if (!src) return null
+              return (
+                <img
+                  src={src}
+                  alt={alt || ''}
+                  className="max-w-full rounded-lg my-2"
+                  loading="lazy"
+                  {...props}
+                />
+              )
+            },
           }}
         >
           {md}

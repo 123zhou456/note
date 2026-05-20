@@ -223,6 +223,7 @@ export default function NoteEditView() {
       const reader = new FileReader()
       reader.onload = (ev) => {
         const result = ev.target?.result as string
+        if (!result) return
         insertAtCursor(`\n![图片](${result})\n`)
       }
       reader.readAsDataURL(file)
@@ -232,6 +233,7 @@ export default function NoteEditView() {
 
   // Handwriting insertion - inline in markdown
   const handleHandwritingComplete = useCallback((base64Data: string) => {
+    if (!base64Data) return
     insertAtCursor(`\n![手写](${base64Data})\n`)
     setShowHandwriting(false)
   }, [insertAtCursor])
