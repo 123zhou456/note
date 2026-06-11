@@ -12,7 +12,7 @@ interface MarkdownRendererProps {
   foldStates: Record<string, boolean>
   onToggleFold: (headingId: string) => void
   images?: Record<string, string>
-  onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => void
+  onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace' | 'save', uuid: string) => void
 }
 
 // ---------- 预处理：让编辑体验更接近文档而非代码 ----------
@@ -220,12 +220,14 @@ function Lightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: (
 function ImageActionSheet({
   onView,
   onEdit,
+  onSave,
   onReplace,
   onDelete,
   onClose,
 }: {
   onView: () => void
   onEdit: () => void
+  onSave: () => void
   onReplace: () => void
   onDelete: () => void
   onClose: () => void
@@ -257,6 +259,13 @@ function ImageActionSheet({
         </button>
         <button
           className="w-full text-left px-4 py-3 rounded-xl hover:bg-accent transition-colors flex items-center gap-3"
+          onClick={onSave}
+        >
+          <svg className="h-5 w-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          <span>保存到本地</span>
+        </button>
+        <button
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-accent transition-colors flex items-center gap-3"
           onClick={onReplace}
         >
           <svg className="h-5 w-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.36 6.36"/><path d="M3 12a9 9 0 0 1 15.36-6.36"/><path d="m7 21-4-4 4-4"/><path d="m17 3 4 4-4 4"/></svg>
@@ -275,7 +284,7 @@ function ImageActionSheet({
 }
 
 // ---------- 缩略图（可点击弹出操作菜单）----------
-function Thumbnail({ src, alt, onImageAction }: { src?: string; alt?: string; onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => void }) {
+function Thumbnail({ src, alt, onImageAction }: { src?: string; alt?: string; onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace' | 'save', uuid: string) => void }) {
   const [showLightbox, setShowLightbox] = useState(false)
   const [showActions, setShowActions] = useState(false)
 
@@ -304,7 +313,7 @@ function Thumbnail({ src, alt, onImageAction }: { src?: string; alt?: string; on
     }
   }
 
-  const handleAction = (action: 'view' | 'edit' | 'delete' | 'replace') => {
+  const handleAction = (action: 'view' | 'edit' | 'delete' | 'replace' | 'save') => {
     setShowActions(false)
     if (action === 'view') {
       setShowLightbox(true)
@@ -342,6 +351,7 @@ function Thumbnail({ src, alt, onImageAction }: { src?: string; alt?: string; on
         <ImageActionSheet
           onView={() => handleAction('view')}
           onEdit={() => handleAction('edit')}
+          onSave={() => handleAction('save')}
           onReplace={() => handleAction('replace')}
           onDelete={() => handleAction('delete')}
           onClose={() => setShowActions(false)}

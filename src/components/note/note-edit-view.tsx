@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ArrowLeft, Palette, Tag as TagIcon, Bold, Save, Undo2, X, ImageIcon, Pen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast'
 import { Camera, CameraSource, CameraResultType } from '@capacitor/camera'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 import HandwriteCanvas from './handwrite-canvas'
 import ImageEditor from './image-editor'
 
@@ -329,9 +330,38 @@ export default function NoteEditView() {
   }, [insertAtCursor])
 
   // 图片操作菜单回调
-  const handleImageAction = useCallback((action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => {
+  const handleImageAction = useCallback(async (action: 'view' | 'edit' | 'delete' | 'replace' | 'save', uuid: string) => {
     if (action === 'edit') {
       setEditingImageUuid(uuid)
+    } else if (action === 'save') {
+      // 保存图片到本地设备
+      const dataUrl = images[uuid]
+      if (!dataUrl) {
+        toast({ title: '图片不存在', variant: 'destructive' })
+        return
+      }
+      try {
+        const [, base64Data] = dataUrl.split(',')
+        const ext = dataUrl.includes('image/png') ? 'png' : 'jpg'
+        const fileName = `diary_${Date.now()}.${ext}`
+        await Filesystem.checkPermissions()
+        const permResult = await Filesystem.requestPermissions()
+        if (permResult.publicStorage !== 'granted') {
+          toast({ title: '需要存储权限才能保存图片', variant: 'destructive' })
+          return
+        }
+        const result = await Filesystem.writeFile({
+          path: `Pictures/日记便签/${fileName}`,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true,
+        })
+        toast({ title: '已保存到本地', description: `Pictures/日记便签/${fileName}` })
+        console.log('Saved image:', result.uri)
+      } catch (err) {
+        console.error('Save image error:', err)
+        toast({ title: '保存失败', description: String(err), variant: 'destructive' })
+      }
     } else if (action === 'delete') {
       // 删除图片：从内容中移除 markdown 引用
       const pattern = new RegExp(`!\\[[^\\]]*\\]\\((?:img|hw):${uuid.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\)\\n?`, 'g')
@@ -366,7 +396,7 @@ export default function NoteEditView() {
       })
     }
     // 'view' 由 Thumbnail 内部处理（打开 Lightbox）
-  }, [content, triggerAutoSave, toast])
+  }, [content, images, triggerAutoSave, toast])
 
   // 图片编辑保存
   const handleImageEditSave = useCallback((newDataUrl: string) => {
