@@ -12,6 +12,7 @@ interface MarkdownRendererProps {
   foldStates: Record<string, boolean>
   onToggleFold: (headingId: string) => void
   images?: Record<string, string>
+  onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => void
 }
 
 // ---------- 预处理：让编辑体验更接近文档而非代码 ----------
@@ -59,7 +60,16 @@ function getOrCreateBlobUrl(uuid: string, dataUrl: string): string {
   }
 }
 
-// 3. 将 ![alt](img:uuid) 和 ![alt](hw:uuid) 替换为 Blob URL
+/** 清除指定图片的 Blob URL 缓存（删除图片时调用） */
+export function clearBlobUrl(uuid: string) {
+  const url = blobUrlCache.get(uuid)
+  if (url) {
+    URL.revokeObjectURL(url)
+    blobUrlCache.delete(uuid)
+  }
+}
+
+// 3. 将 ![alt](img:uuid) 和 ![alt](hw:uuid) 替换为 Blob URL，并保留 uuid 属性
 function resolveImageUrls(md: string, images: Record<string, string>): string {
   return md.replace(
     /!\[([^\]]*)\]\((?:img|hw):([^)]+)\)/g,
@@ -67,7 +77,8 @@ function resolveImageUrls(md: string, images: Record<string, string>): string {
       const dataUrl = images[uuid]
       if (dataUrl) {
         const blobUrl = getOrCreateBlobUrl(uuid, dataUrl)
-        return `![${alt}](${blobUrl})`
+        // 在 URL 中编码 uuid 作为查询参数，供 Thumbnail 使用
+        return `![${alt}](${blobUrl}?uuid=${encodeURIComponent(uuid)})`
       }
       return `![${alt}]()`
     }
@@ -205,16 +216,101 @@ function Lightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: (
   )
 }
 
-// ---------- 缩略图（可点击放大）----------
-function Thumbnail({ src, alt }: { src?: string; alt?: string }) {
+// ---------- 图片操作菜单 ----------
+function ImageActionSheet({
+  onView,
+  onEdit,
+  onReplace,
+  onDelete,
+  onClose,
+}: {
+  onView: () => void
+  onEdit: () => void
+  onReplace: () => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative w-full max-w-md bg-background rounded-t-2xl p-4 pb-8 space-y-2 animate-in slide-in-from-bottom"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-3" />
+        <button
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-accent transition-colors flex items-center gap-3"
+          onClick={onView}
+        >
+          <ZoomIn className="h-5 w-5 text-muted-foreground" />
+          <span>查看大图</span>
+        </button>
+        <button
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-accent transition-colors flex items-center gap-3"
+          onClick={onEdit}
+        >
+          <svg className="h-5 w-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          <span>手写编辑</span>
+        </button>
+        <button
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-accent transition-colors flex items-center gap-3"
+          onClick={onReplace}
+        >
+          <svg className="h-5 w-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.36 6.36"/><path d="M3 12a9 9 0 0 1 15.36-6.36"/><path d="m7 21-4-4 4-4"/><path d="m17 3 4 4-4 4"/></svg>
+          <span>替换图片</span>
+        </button>
+        <button
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-destructive/10 transition-colors flex items-center gap-3 text-destructive"
+          onClick={onDelete}
+        >
+          <X className="h-5 w-5" />
+          <span>删除图片</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------- 缩略图（可点击弹出操作菜单）----------
+function Thumbnail({ src, alt, onImageAction }: { src?: string; alt?: string; onImageAction?: (action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => void }) {
   const [showLightbox, setShowLightbox] = useState(false)
+  const [showActions, setShowActions] = useState(false)
 
   if (!src) return null
+
+  // 从 URL 查询参数中提取 uuid
+  let uuid = ''
+  let cleanSrc = src
+  try {
+    const url = new URL(src)
+    uuid = url.searchParams.get('uuid') || ''
+    if (uuid) {
+      cleanSrc = src.split('?')[0]
+    }
+  } catch {
+    // 不是完整 URL，忽略
+  }
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    setShowLightbox(true)
+    if (uuid && onImageAction) {
+      setShowActions(true)
+    } else {
+      setShowLightbox(true)
+    }
+  }
+
+  const handleAction = (action: 'view' | 'edit' | 'delete' | 'replace') => {
+    setShowActions(false)
+    if (action === 'view') {
+      setShowLightbox(true)
+    } else if (uuid && onImageAction) {
+      onImageAction(action, uuid)
+    }
   }
 
   return (
@@ -224,19 +320,32 @@ function Thumbnail({ src, alt }: { src?: string; alt?: string }) {
         onClick={handleClick}
       >
         <img
-          src={src}
+          src={cleanSrc}
           alt={alt || ''}
           className="max-h-48 w-auto rounded-lg shadow-sm object-cover"
           loading="lazy"
           onClick={handleClick}
         />
-        {/* 右下角始终显示放大图标 */}
+        {/* 右下角始终显示操作图标 */}
         <div className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center pointer-events-none">
-          <ZoomIn className="h-4 w-4 text-white" />
+          {uuid ? (
+            <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+          ) : (
+            <ZoomIn className="h-4 w-4 text-white" />
+          )}
         </div>
       </div>
       {showLightbox && (
-        <Lightbox src={src} alt={alt} onClose={() => setShowLightbox(false)} />
+        <Lightbox src={cleanSrc} alt={alt} onClose={() => setShowLightbox(false)} />
+      )}
+      {showActions && (
+        <ImageActionSheet
+          onView={() => handleAction('view')}
+          onEdit={() => handleAction('edit')}
+          onReplace={() => handleAction('replace')}
+          onDelete={() => handleAction('delete')}
+          onClose={() => setShowActions(false)}
+        />
       )}
     </>
   )
@@ -289,7 +398,7 @@ function renderNode(
 }
 
 // ---------- 组件 ----------
-export default function MarkdownRenderer({ content, foldStates, onToggleFold, images = {} }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, foldStates, onToggleFold, images = {}, onImageAction }: MarkdownRendererProps) {
   const renderMarkdown = useCallback(
     (md: string) => {
       return (
@@ -299,7 +408,7 @@ export default function MarkdownRenderer({ content, foldStates, onToggleFold, im
             rehypePlugins={[rehypeRaw]}
             urlTransform={(url) => url}
             components={{
-              img: ({ src, alt }) => <Thumbnail src={src} alt={alt} />,
+              img: ({ src, alt }) => <Thumbnail src={src} alt={alt} onImageAction={onImageAction} />,
             }}
           >
             {md}
@@ -307,7 +416,7 @@ export default function MarkdownRenderer({ content, foldStates, onToggleFold, im
         </div>
       )
     },
-    []
+    [onImageAction]
   )
 
   if (!content || !content.trim()) {

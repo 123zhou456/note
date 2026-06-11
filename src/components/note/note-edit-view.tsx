@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '@/store/app-store'
-import MarkdownRenderer, { buildHeadingTree, HeadingNode } from './markdown-renderer'
+import MarkdownRenderer, { buildHeadingTree, HeadingNode, clearBlobUrl } from './markdown-renderer'
 
 
 
@@ -15,6 +15,7 @@ import { ArrowLeft, Palette, Tag as TagIcon, Bold, Save, Undo2, X, ImageIcon, Pe
 import { useToast } from '@/hooks/use-toast'
 import { Camera, CameraSource, CameraResultType } from '@capacitor/camera'
 import HandwriteCanvas from './handwrite-canvas'
+import ImageEditor from './image-editor'
 
 const COLOR_OPTIONS = [
   '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71',
@@ -55,6 +56,7 @@ export default function NoteEditView() {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const [images, setImages] = useState<Record<string, string>>({})
   const [isHandwriting, setIsHandwriting] = useState(false)
+  const [editingImageUuid, setEditingImageUuid] = useState<string | null>(null)
   const [swipedTagId, setSwipedTagId] = useState<string | null>(null)
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
@@ -325,6 +327,55 @@ export default function NoteEditView() {
       insertAtCursor(`\n![手写](hw:${uuid})\n`)
     })
   }, [insertAtCursor])
+
+  // 图片操作菜单回调
+  const handleImageAction = useCallback((action: 'view' | 'edit' | 'delete' | 'replace', uuid: string) => {
+    if (action === 'edit') {
+      setEditingImageUuid(uuid)
+    } else if (action === 'delete') {
+      // 删除图片：从内容中移除 markdown 引用
+      const pattern = new RegExp(`!\\[[^\\]]*\\]\\((?:img|hw):${uuid.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\)\\n?`, 'g')
+      const newContent = content.replace(pattern, '')
+      setContent(newContent)
+      contentRef.current = newContent
+      setImages(prev => {
+        const next = { ...prev }
+        delete next[uuid]
+        return next
+      })
+      clearBlobUrl(uuid)
+      triggerAutoSave()
+    } else if (action === 'replace') {
+      // 替换图片：从相册选新图
+      Camera.getPhoto({
+        source: CameraSource.Photos,
+        resultType: CameraResultType.Base64,
+        quality: 60,
+        width: 1200,
+        height: 1200,
+      }).then(photo => {
+        if (!photo.base64String) return
+        const format = photo.format || 'jpeg'
+        const dataUrl = `data:image/${format};base64,${photo.base64String}`
+        clearBlobUrl(uuid)
+        setImages(prev => ({ ...prev, [uuid]: dataUrl }))
+        triggerAutoSave()
+      }).catch(err => {
+        if ((err as Error)?.message?.includes('cancelled')) return
+        toast({ title: '替换图片失败', description: String(err), variant: 'destructive' })
+      })
+    }
+    // 'view' 由 Thumbnail 内部处理（打开 Lightbox）
+  }, [content, triggerAutoSave, toast])
+
+  // 图片编辑保存
+  const handleImageEditSave = useCallback((newDataUrl: string) => {
+    if (!editingImageUuid) return
+    clearBlobUrl(editingImageUuid)
+    setImages(prev => ({ ...prev, [editingImageUuid]: newDataUrl }))
+    setEditingImageUuid(null)
+    triggerAutoSave()
+  }, [editingImageUuid, triggerAutoSave])
 
   // Tag management
   const handleCreateTag = useCallback(async () => {
@@ -754,6 +805,7 @@ export default function NoteEditView() {
                   foldStates={foldStates}
                   onToggleFold={handleToggleFold}
                   images={images}
+                  onImageAction={handleImageAction}
                 />
               )}
             </div>
@@ -810,6 +862,15 @@ export default function NoteEditView() {
         <HandwriteCanvas
           onSave={handleHandwriteSave}
           onCancel={() => setIsHandwriting(false)}
+        />
+      )}
+
+      {/* 图片编辑覆盖层 */}
+      {editingImageUuid && images[editingImageUuid] && (
+        <ImageEditor
+          imageDataUrl={images[editingImageUuid]}
+          onSave={handleImageEditSave}
+          onCancel={() => setEditingImageUuid(null)}
         />
       )}
 
