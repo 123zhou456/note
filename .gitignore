@@ -52,3 +52,14 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Android build output
+android/app/build/
+*.apk
+
+# Database
+db/*.db
+
+# Misc generated
+.reasonix/
+test-results/

@@ -16,7 +16,7 @@ export interface Note {
   tags: Tag[]
 }
 
-export type ViewType = 'list' | 'edit' | 'tags' | 'trash'
+export type ViewType = 'list' | 'edit' | 'tags' | 'trash' | 'storage' | 'sync'
 
 export type SortOrder = 'time-desc' | 'time-asc' | 'tag'
 

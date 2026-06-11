@@ -1,0 +1,9 @@
+{
+  "appId": "com.diarynotes.app",
+  "appName": "日记便签",
+  "webDir": "out",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

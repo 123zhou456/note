@@ -6,6 +6,8 @@ import NoteListView from '@/components/note/note-list-view'
 import NoteEditView from '@/components/note/note-edit-view'
 import TagManageView from '@/components/note/tag-manage-view'
 import RecycleBinView from '@/components/note/recycle-bin-view'
+import StorageSettingsView from '@/components/note/storage-settings-view'
+import SyncView from '@/components/note/sync-view'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Home() {
@@ -49,7 +51,7 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center max-w-lg mx-auto">
+      <div className="h-full flex items-center justify-center max-w-5xl mx-auto">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
           <p className="text-sm text-muted-foreground">加载中...</p>
@@ -81,6 +83,8 @@ export default function Home() {
             {view === 'edit' && <NoteEditView />}
             {view === 'tags' && <TagManageView />}
             {view === 'trash' && <RecycleBinView />}
+            {view === 'storage' && <StorageSettingsView />}
+            {view === 'sync' && <SyncView />}
           </motion.div>
         </AnimatePresence>
       </main>
