@@ -268,6 +268,10 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
     const drawCanvas = drawCanvasRef.current
     if (!bgCanvas || !drawCanvas || !canvasSize.width || !imageInfo) return
 
+    // 源图是否为「可能含透明通道」的格式（手写/PNG/WebP/GIF）
+    // 这类图必须保留透明，绝不能填白底，否则透明区域会变成白块（即所谓「白边」）
+    const isAlphaFormat = /^data:image\/(png|webp|gif)/i.test(imageDataUrl)
+
     // 重新加载源图，一切以源图「真实像素尺寸」为基准导出，保证输出形状/尺寸 = 原图
     const img = new Image()
     img.onload = () => {
@@ -282,11 +286,13 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
       const exportCtx = exportCanvas.getContext('2d')
       if (!exportCtx) return
 
-      // 白底兜底：源图若含透明区域，导出为 JPEG 时统一显示为白色（与编辑界面一致）
-      exportCtx.fillStyle = '#ffffff'
-      exportCtx.fillRect(0, 0, natW, natH)
+      // 仅对不透明的 JPEG 源铺白底；PNG/手写等保留透明，不填白
+      if (!isAlphaFormat) {
+        exportCtx.fillStyle = '#ffffff'
+        exportCtx.fillRect(0, 0, natW, natH)
+      }
 
-      // 源图铺满整张导出画布（与画布同尺寸，绝不产生letterbox白边）
+      // 源图铺满整张导出画布（与画布同尺寸，绝不产生 letterbox 白边）
       exportCtx.drawImage(img, 0, 0, natW, natH)
 
       // 用「自然尺寸 + 当前显示画布尺寸」重算 contain 几何，使笔迹坐标映射与显示完全一致
@@ -299,35 +305,46 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
       const scaleX = natW / drawW
       const scaleY = natH / drawH
 
-      // 笔迹：从显示坐标(CSS px) 映射回图片像素坐标后绘制
-      exportCtx.save()
-      exportCtx.scale(scaleX, scaleY)
-      exportCtx.translate(-drawX, -drawY)
-      exportCtx.lineCap = 'round'
-      exportCtx.lineJoin = 'round'
-
-      for (const s of strokes) {
-        if (s.points.length < 2) continue
-        if (s.tool === 'eraser') {
-          // 橡皮在 JPEG 上以白色覆盖（无 alpha 通道，destination-out 不适用）
-          exportCtx.globalCompositeOperation = 'source-over'
-          exportCtx.strokeStyle = '#ffffff'
-        } else {
-          exportCtx.globalCompositeOperation = 'source-over'
-          exportCtx.strokeStyle = s.color
+      // 笔迹单独画在一张图层上：橡皮用 destination-out 只擦除笔迹本身，
+      // 与屏幕上一致（擦掉笔迹、露出底图，而非涂白），同时不破坏底图/透明区域
+      if (strokes.length > 0) {
+        const strokeCanvas = document.createElement('canvas')
+        strokeCanvas.width = natW
+        strokeCanvas.height = natH
+        const sctx = strokeCanvas.getContext('2d')
+        if (sctx) {
+          sctx.save()
+          sctx.scale(scaleX, scaleY)
+          sctx.translate(-drawX, -drawY)
+          sctx.lineCap = 'round'
+          sctx.lineJoin = 'round'
+          for (const s of strokes) {
+            if (s.points.length < 2) continue
+            if (s.tool === 'eraser') {
+              sctx.globalCompositeOperation = 'destination-out'
+              sctx.strokeStyle = 'rgba(0,0,0,1)'
+            } else {
+              sctx.globalCompositeOperation = 'source-over'
+              sctx.strokeStyle = s.color
+            }
+            sctx.lineWidth = s.size
+            sctx.beginPath()
+            sctx.moveTo(s.points[0].x, s.points[0].y)
+            for (let i = 1; i < s.points.length; i++) {
+              sctx.lineTo(s.points[i].x, s.points[i].y)
+            }
+            sctx.stroke()
+          }
+          sctx.restore()
+          // 笔迹层（橡皮已在层内生效，只影响笔迹）叠加到导出画布
+          exportCtx.drawImage(strokeCanvas, 0, 0)
         }
-        exportCtx.lineWidth = s.size
-        exportCtx.beginPath()
-        exportCtx.moveTo(s.points[0].x, s.points[0].y)
-        for (let i = 1; i < s.points.length; i++) {
-          exportCtx.lineTo(s.points[i].x, s.points[i].y)
-        }
-        exportCtx.stroke()
       }
-      exportCtx.restore()
 
-      // 导出：尺寸与源图一致
-      const dataUrl = exportCanvas.toDataURL('image/jpeg', 0.85)
+      // 导出：透明格式 → PNG（保留透明）；否则 → JPEG。尺寸恒等于源图
+      const dataUrl = isAlphaFormat
+        ? exportCanvas.toDataURL('image/png')
+        : exportCanvas.toDataURL('image/jpeg', 0.85)
       onSave(dataUrl)
 
       // Restore background canvas (remove drawing overlay) for potential re-edit

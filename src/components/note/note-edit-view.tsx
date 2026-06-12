@@ -633,6 +633,20 @@ export default function NoteEditView() {
     })
   }, [content])
 
+  // 点击 textarea 下方的空白区域 → 追加换行并聚焦
+  const handleBlankAreaClick = useCallback(() => {
+    const newValue = contentRef.current + '\n'
+    setContent(newValue)
+    contentRef.current = newValue
+    triggerAutoSave()
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(newValue.length, newValue.length)
+    })
+  }, [triggerAutoSave])
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -904,7 +918,7 @@ export default function NoteEditView() {
 
         {/* 编辑模式 */}
         {isEditing && (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-1.5 border-b border-border/30 bg-muted/20 shrink-0">
               <span className="text-xs text-muted-foreground">编辑 (点击「完成」查看预览)</span>
               <div className="flex items-center gap-3">
@@ -932,9 +946,11 @@ export default function NoteEditView() {
                 }, 2000)
               }}
               placeholder="输入内容..."
-              className="flex-1 w-full resize-none border-0 bg-transparent focus:outline-none text-base px-4 py-3"
+              className="w-full min-h-[40vh] resize-none border-0 bg-transparent focus:outline-none text-base px-4 py-3"
               // autoFocus removed to fix cursor positioning issue
             />
+            {/* 空白区域：点击时追加换行并聚焦 textarea */}
+            <div className="flex-1 min-h-[60px]" onClick={handleBlankAreaClick} />
           </div>
         )}
       </div>
