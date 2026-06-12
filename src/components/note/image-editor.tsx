@@ -44,6 +44,30 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
+  const [imageInfo, setImageInfo] = useState<{ width: number; height: number; drawX: number; drawY: number; drawW: number; drawH: number } | null>(null)
+
+  // 根据「图片自然尺寸 + 显示画布尺寸」计算 contain 适配几何
+  // 显示坐标(CSS px) → 图片像素坐标 的映射依赖这套几何，导出时必须用相同算法重算，保证一致
+  const computeContain = useCallback(
+    (natW: number, natH: number, cw: number, ch: number) => {
+      const imgRatio = natW / natH
+      const canvasRatio = cw / ch
+      let drawW: number, drawH: number, drawX: number, drawY: number
+      if (imgRatio > canvasRatio) {
+        drawW = cw
+        drawH = cw / imgRatio
+        drawX = 0
+        drawY = (ch - drawH) / 2
+      } else {
+        drawH = ch
+        drawW = ch * imgRatio
+        drawX = (cw - drawW) / 2
+        drawY = 0
+      }
+      return { drawX, drawY, drawW, drawH }
+    },
+    []
+  )
 
   // Initialize canvases and load image
   useEffect(() => {
@@ -80,22 +104,23 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
       bgCtx.fillStyle = '#ffffff'
       bgCtx.fillRect(0, 0, w, h)
 
+      // 用真实像素尺寸（naturalWidth/Height），避免 img.width/height 受布局影响导致尺寸漂移
+      const natW = img.naturalWidth || img.width
+      const natH = img.naturalHeight || img.height
+
       // Fit image within canvas (contain)
-      const imgRatio = img.width / img.height
-      const canvasRatio = w / h
-      let drawW: number, drawH: number, drawX: number, drawY: number
-      if (imgRatio > canvasRatio) {
-        drawW = w
-        drawH = w / imgRatio
-        drawX = 0
-        drawY = (h - drawH) / 2
-      } else {
-        drawH = h
-        drawW = h * imgRatio
-        drawX = (w - drawW) / 2
-        drawY = 0
-      }
+      const { drawX, drawY, drawW, drawH } = computeContain(natW, natH, w, h)
       bgCtx.drawImage(img, drawX, drawY, drawW, drawH)
+
+      // Store image info for proper export（width/height 为图片真实像素尺寸）
+      setImageInfo({
+        width: natW,
+        height: natH,
+        drawX,
+        drawY,
+        drawW,
+        drawH,
+      })
     }
     img.src = imageDataUrl
 
@@ -106,7 +131,7 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
       drawCtx.lineCap = 'round'
       drawCtx.lineJoin = 'round'
     }
-  }, [imageDataUrl])
+  }, [imageDataUrl, computeContain])
 
   const getPoint = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     const canvas = drawCanvasRef.current
@@ -241,47 +266,84 @@ export default function ImageEditor({ imageDataUrl, onSave, onCancel }: ImageEdi
   const handleSave = useCallback(() => {
     const bgCanvas = bgCanvasRef.current
     const drawCanvas = drawCanvasRef.current
-    if (!bgCanvas || !drawCanvas || !canvasSize.width) return
+    if (!bgCanvas || !drawCanvas || !canvasSize.width || !imageInfo) return
 
-    // Merge drawing onto background
-    const bgCtx = bgCanvas.getContext('2d')
-    if (!bgCtx) return
-    bgCtx.save()
-    bgCtx.setTransform(1, 0, 0, 1, 0, 0)
-    bgCtx.drawImage(drawCanvas, 0, 0)
-    bgCtx.restore()
-
-    // Export as JPEG
-    const dataUrl = bgCanvas.toDataURL('image/jpeg', 0.85)
-    onSave(dataUrl)
-
-    // Restore background canvas (remove drawing overlay) for potential re-edit
+    // 重新加载源图，一切以源图「真实像素尺寸」为基准导出，保证输出形状/尺寸 = 原图
     const img = new Image()
     img.onload = () => {
-      const dpr = window.devicePixelRatio || 1
-      bgCtx.save()
-      bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      bgCtx.fillStyle = '#ffffff'
-      bgCtx.fillRect(0, 0, canvasSize.width, canvasSize.height)
-      const imgRatio = img.width / img.height
-      const canvasRatio = canvasSize.width / canvasSize.height
-      let drawW: number, drawH: number, drawX: number, drawY: number
-      if (imgRatio > canvasRatio) {
-        drawW = canvasSize.width
-        drawH = canvasSize.width / imgRatio
-        drawX = 0
-        drawY = (canvasSize.height - drawH) / 2
-      } else {
-        drawH = canvasSize.height
-        drawW = canvasSize.height * imgRatio
-        drawX = (canvasSize.width - drawW) / 2
-        drawY = 0
+      const natW = img.naturalWidth || img.width || imageInfo.width
+      const natH = img.naturalHeight || img.height || imageInfo.height
+      if (!natW || !natH) return
+
+      // 导出画布严格等于源图像素尺寸（不放大、不留白边）
+      const exportCanvas = document.createElement('canvas')
+      exportCanvas.width = natW
+      exportCanvas.height = natH
+      const exportCtx = exportCanvas.getContext('2d')
+      if (!exportCtx) return
+
+      // 白底兜底：源图若含透明区域，导出为 JPEG 时统一显示为白色（与编辑界面一致）
+      exportCtx.fillStyle = '#ffffff'
+      exportCtx.fillRect(0, 0, natW, natH)
+
+      // 源图铺满整张导出画布（与画布同尺寸，绝不产生letterbox白边）
+      exportCtx.drawImage(img, 0, 0, natW, natH)
+
+      // 用「自然尺寸 + 当前显示画布尺寸」重算 contain 几何，使笔迹坐标映射与显示完全一致
+      const { drawX, drawY, drawW, drawH } = computeContain(
+        natW,
+        natH,
+        canvasSize.width,
+        canvasSize.height
+      )
+      const scaleX = natW / drawW
+      const scaleY = natH / drawH
+
+      // 笔迹：从显示坐标(CSS px) 映射回图片像素坐标后绘制
+      exportCtx.save()
+      exportCtx.scale(scaleX, scaleY)
+      exportCtx.translate(-drawX, -drawY)
+      exportCtx.lineCap = 'round'
+      exportCtx.lineJoin = 'round'
+
+      for (const s of strokes) {
+        if (s.points.length < 2) continue
+        if (s.tool === 'eraser') {
+          // 橡皮在 JPEG 上以白色覆盖（无 alpha 通道，destination-out 不适用）
+          exportCtx.globalCompositeOperation = 'source-over'
+          exportCtx.strokeStyle = '#ffffff'
+        } else {
+          exportCtx.globalCompositeOperation = 'source-over'
+          exportCtx.strokeStyle = s.color
+        }
+        exportCtx.lineWidth = s.size
+        exportCtx.beginPath()
+        exportCtx.moveTo(s.points[0].x, s.points[0].y)
+        for (let i = 1; i < s.points.length; i++) {
+          exportCtx.lineTo(s.points[i].x, s.points[i].y)
+        }
+        exportCtx.stroke()
       }
-      bgCtx.drawImage(img, drawX, drawY, drawW, drawH)
-      bgCtx.restore()
+      exportCtx.restore()
+
+      // 导出：尺寸与源图一致
+      const dataUrl = exportCanvas.toDataURL('image/jpeg', 0.85)
+      onSave(dataUrl)
+
+      // Restore background canvas (remove drawing overlay) for potential re-edit
+      const bgCtx = bgCanvas.getContext('2d')
+      if (bgCtx) {
+        const dpr = window.devicePixelRatio || 1
+        bgCtx.save()
+        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        bgCtx.fillStyle = '#ffffff'
+        bgCtx.fillRect(0, 0, canvasSize.width, canvasSize.height)
+        bgCtx.drawImage(img, drawX, drawY, drawW, drawH)
+        bgCtx.restore()
+      }
     }
     img.src = imageDataUrl
-  }, [canvasSize, onSave, imageDataUrl])
+  }, [canvasSize, imageInfo, strokes, onSave, imageDataUrl, computeContain])
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">

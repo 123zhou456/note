@@ -496,42 +496,102 @@ export default function NoteEditView() {
       return
     }
 
-    // 从点击的 DOM 元素提取文字
-    let target = e.target as HTMLElement
-    let clickedText = ''
     const previewDiv = previewRef.current
+    let pos = 0
 
-    // 向上找有文字的最近元素（限制长度避免取到整个容器的文字）
-    while (target && target !== previewDiv) {
-      if (target.childNodes.length === 1 && target.childNodes[0].nodeType === 3) {
-        // 直接文字节点 — 最精确
-        clickedText = target.textContent!.trim()
-        break
+    // 1) 用 caretRangeFromPoint 拿到点击处「精确的文本节点 + 节点内偏移」
+    let caretNode: Node | null = null
+    let caretOffset = 0
+    const cx = e.clientX
+    const cy = e.clientY
+    if (typeof document.caretRangeFromPoint === 'function') {
+      const range = document.caretRangeFromPoint(cx, cy)
+      if (range) {
+        caretNode = range.startContainer
+        caretOffset = range.startOffset
       }
-      const tc = target.textContent?.trim()
-      if (tc && tc.length > 0 && tc.length < 200) {
-        clickedText = tc
-        break
+    } else if (typeof (document as any).caretPositionFromPoint === 'function') {
+      const cp = (document as any).caretPositionFromPoint(cx, cy)
+      if (cp) {
+        caretNode = cp.offsetNode
+        caretOffset = cp.offset
       }
-      target = target.parentElement as HTMLElement
     }
 
-    let pos = 0
-    if (clickedText) {
-      // 在 content 中搜索点击的文字
-      const searchText = clickedText.substring(0, 80)
-      const idx = content.indexOf(searchText)
-      if (idx >= 0) {
-        pos = idx
+    // 若拿到的是元素节点（点在节点间隙），尝试取对应子文本节点
+    if (caretNode && caretNode.nodeType !== 3) {
+      const el = caretNode as Element
+      const child =
+        el.childNodes[caretOffset] || el.childNodes[caretOffset - 1] || el.firstChild
+      if (child && child.nodeType === 3) {
+        caretOffset =
+          caretOffset >= el.childNodes.length ? (child.textContent?.length || 0) : 0
+        caretNode = child
       } else {
-        // 尝试只搜索前 20 个字符
-        const shortText = searchText.substring(0, 20)
-        const shortIdx = content.indexOf(shortText)
-        pos = shortIdx >= 0 ? shortIdx : 0
+        caretNode = null
       }
+    }
+
+    if (
+      previewDiv &&
+      caretNode &&
+      caretNode.nodeType === 3 &&
+      previewDiv.contains(caretNode)
+    ) {
+      // 2) 按文档顺序遍历文本节点，在源码中逐个向后递进匹配，定位点击节点的源码起点
+      //    单个渲染文本节点内部的文字在源码里一定连续（** / [c:] / # 等语法标记会切断成相邻节点）
+      const walker = document.createTreeWalker(previewDiv, NodeFilter.SHOW_TEXT)
+      let searchFrom = 0
+      let found = false
+      let n: Node | null
+      while ((n = walker.nextNode())) {
+        const text = n.textContent || ''
+        if (n === caretNode) {
+          let idx = text.trim() ? content.indexOf(text, searchFrom) : -1
+          if (idx >= 0) {
+            pos = idx + Math.min(caretOffset, text.length)
+          } else {
+            // 退化：用光标前的可见文本作为锚点
+            const anchor = text.slice(0, caretOffset)
+            const aIdx = anchor.trim() ? content.indexOf(anchor, searchFrom) : -1
+            pos = aIdx >= 0 ? aIdx + anchor.length : searchFrom
+          }
+          found = true
+          break
+        }
+        if (text.trim()) {
+          const idx = content.indexOf(text, searchFrom)
+          if (idx >= 0) searchFrom = idx + text.length
+        }
+      }
+      if (!found) pos = 0
     } else {
-      // 兜底：按点击位置的比例估算
-      if (previewDiv) {
+      // 3) 不支持 caretRangeFromPoint 的旧 WebView：回退到原「元素文本搜索」逻辑（落在段首）
+      let target = e.target as HTMLElement
+      let clickedText = ''
+      while (target && target !== previewDiv) {
+        if (target.childNodes.length === 1 && target.childNodes[0].nodeType === 3) {
+          clickedText = target.textContent!.trim()
+          break
+        }
+        const tc = target.textContent?.trim()
+        if (tc && tc.length > 0 && tc.length < 200) {
+          clickedText = tc
+          break
+        }
+        target = target.parentElement as HTMLElement
+      }
+      if (clickedText) {
+        const searchText = clickedText.substring(0, 80)
+        const idx = content.indexOf(searchText)
+        if (idx >= 0) {
+          pos = idx
+        } else {
+          const shortText = searchText.substring(0, 20)
+          const shortIdx = content.indexOf(shortText)
+          pos = shortIdx >= 0 ? shortIdx : 0
+        }
+      } else if (previewDiv) {
         const rect = previewDiv.getBoundingClientRect()
         const clickY = e.clientY - rect.top + previewDiv.scrollTop
         const ratio = Math.min(1, Math.max(0, previewDiv.scrollHeight > 0 ? clickY / previewDiv.scrollHeight : 0))
@@ -541,7 +601,7 @@ export default function NoteEditView() {
 
     savedCursorPos.current = pos
     setIsEditing(true)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       const textarea = textareaRef.current
       if (!textarea) return
       textarea.focus()
@@ -549,7 +609,7 @@ export default function NoteEditView() {
       // 估算行号并滚动
       const lines = content.substring(0, pos).split('\n').length - 1
       textarea.scrollTop = Math.max(0, lines * 24 - 60)
-    })
+    }, 0);
   }, [content])
 
   // 完成编辑 → 返回预览，按比例同步滚动位置
@@ -873,7 +933,7 @@ export default function NoteEditView() {
               }}
               placeholder="输入内容..."
               className="flex-1 w-full resize-none border-0 bg-transparent focus:outline-none text-base px-4 py-3"
-              autoFocus
+              // autoFocus removed to fix cursor positioning issue
             />
           </div>
         )}
