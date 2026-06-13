@@ -633,17 +633,33 @@ export default function NoteEditView() {
     })
   }, [content])
 
-  // 点击 textarea 下方的空白区域 → 追加换行并聚焦
-  const handleBlankAreaClick = useCallback(() => {
-    const newValue = contentRef.current + '\n'
-    setContent(newValue)
-    contentRef.current = newValue
-    triggerAutoSave()
+  // 点击文字末尾/下方的空白处 → 只补一行并把光标移到该行（点多远都只补一行）
+  // 用浏览器原生命中测试（selectionStart）判断，避免镜像像素测量在不同机型上的偏差
+  const handleTextareaClick = useCallback(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    const value = ta.value
+    if (value.length === 0) return // 空内容时不补行，直接从第一行开始输入
+
+    // 点击后浏览器已把光标放到最近字符：未落在最末尾 → 点在文字内部，保持原生定位
+    const caret = ta.selectionStart
+    if (caret < value.length) return
+
+    // 落在最末尾 → 点在文字末尾/下方空白：补一行（已以换行结尾则不重复添加）
+    let next = value
+    if (!next.endsWith('\n')) {
+      next += '\n'
+      setContent(next)
+      contentRef.current = next
+      triggerAutoSave()
+    }
+    const end = next.length
     requestAnimationFrame(() => {
-      const ta = textareaRef.current
-      if (!ta) return
-      ta.focus()
-      ta.setSelectionRange(newValue.length, newValue.length)
+      const t = textareaRef.current
+      if (!t) return
+      t.focus()
+      t.setSelectionRange(end, end)
+      t.scrollTop = t.scrollHeight
     })
   }, [triggerAutoSave])
 
@@ -918,7 +934,7 @@ export default function NoteEditView() {
 
         {/* 编辑模式 */}
         {isEditing && (
-          <div className="flex-1 flex flex-col overflow-y-auto">
+          <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-1.5 border-b border-border/30 bg-muted/20 shrink-0">
               <span className="text-xs text-muted-foreground">编辑 (点击「完成」查看预览)</span>
               <div className="flex items-center gap-3">
@@ -946,11 +962,10 @@ export default function NoteEditView() {
                 }, 2000)
               }}
               placeholder="输入内容..."
-              className="w-full min-h-[40vh] resize-none border-0 bg-transparent focus:outline-none text-base px-4 py-3"
+              onClick={handleTextareaClick}
+              className="flex-1 w-full resize-none border-0 bg-transparent focus:outline-none text-base px-4 pt-3 pb-12"
               // autoFocus removed to fix cursor positioning issue
             />
-            {/* 空白区域：点击时追加换行并聚焦 textarea */}
-            <div className="flex-1 min-h-[60px]" onClick={handleBlankAreaClick} />
           </div>
         )}
       </div>
