@@ -1,7 +1,5 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-node_modules
+# Dependencies
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,56 +8,59 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-
-# typescript
+# Build output
+.next/
+out/
 *.tsbuildinfo
 next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-test
-prompt
-
-server.log
-# Skills directory
-/skills/
-
-# Android build output
-android/app/build/
-*.apk
 
 # Database
 db/*.db
 
-# Misc generated
-.reasonix/
+# APK files
+*.apk
+
+# Batch & shell scripts
+*.bat
+*.sh
+.zscripts/
+
+# Test files
+test-img.png
 test-results/
+test/
+prompt/
+
+# Android native project (Capacitor)
+android/
+
+# Logs
+*.log
+dev.log
+dev.out.log
+server.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+download/
+mini-services/
+.reasonix/
+.claude/
+.z-ai-config/
+/skills/
+local-*
+nul
